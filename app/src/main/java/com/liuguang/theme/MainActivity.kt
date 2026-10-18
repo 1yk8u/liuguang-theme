@@ -18,12 +18,14 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
@@ -41,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import com.liuguang.theme.TeamScreen
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -68,10 +71,12 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val REQUEST_CODE_STORAGE_PERMISSION = 1001
         private const val REQUEST_CODE_MANAGE_STORAGE = 1002
-        const val CURRENT_VERSION = 50 // 当前应用版本号
+        const val CURRENT_VERSION = 51 // 当前应用版本号
+        const val APP_VERSION = "v1.1.0"
         const val UPDATE_CHECK_DELAY = 500L // 进入app后0.5秒检查更新
         const val UPDATE_URL = "https://1yk8u.github.io/app1/up/gx.txt"
         const val DOWNLOAD_URL = "https://1yk8u.github.io/app1/"
+        const val THEME_CATALOG_URL = "https://1yk8u.github.io/app1/themes/list.json"
         const val POETRY_URL = "https://v2.jinrishici.com/one.json"
     }
 
@@ -82,15 +87,15 @@ class MainActivity : ComponentActivity() {
             val systemDarkTheme = isSystemInDarkTheme()
             var useSystemTheme by rememberSaveable { mutableStateOf(true) }
             var isDarkTheme by rememberSaveable { mutableStateOf(systemDarkTheme) }
-            
+
             val currentTheme = if (useSystemTheme) systemDarkTheme else isDarkTheme
-            
-            凡尘主题库Theme(darkTheme = currentTheme) {
+
+            LiuGuangTheme(darkTheme = currentTheme) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    凡尘主题库App(
+                    LiuGuangApp(
                         isDarkTheme = currentTheme,
                         useSystemTheme = useSystemTheme,
                         onThemeChange = { isDarkTheme = it },
@@ -174,7 +179,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // 检查更新的方法
+    // 检查更新的方法（兼容带『』与不带『』两种协议格式）
     fun checkForUpdates(context: Context, onUpdateAvailable: (version: Int, content: String) -> Unit, onLatestVersion: () -> Unit) {
         Thread {
             try {
@@ -183,7 +188,7 @@ class MainActivity : ComponentActivity() {
                 connection.connectTimeout = 5000
                 connection.readTimeout = 5000
                 connection.requestMethod = "GET"
-                
+
                 val responseCode = connection.responseCode
                 if (responseCode == HttpURLConnection.HTTP_OK) {
                     val inputStream = connection.inputStream
@@ -195,19 +200,19 @@ class MainActivity : ComponentActivity() {
                     }
                     bufferedReader.close()
                     inputStream.close()
-                    
+
                     val content = stringBuilder.toString()
-                    // 解析版本号和更新内容
-                    val versionPattern = Regex("版本号:『(\\d+)』")
-                    val contentPattern = Regex("更新内容:『(.*?)』")
-                    
+                    // 解析版本号和更新内容（『』括号可选）
+                    val versionPattern = Regex("版本号:『?(\\d+)』?")
+                    val contentPattern = Regex("更新内容:『?(.*?)』?(<|$)")
+
                     val versionMatch = versionPattern.find(content)
                     val contentMatch = contentPattern.find(content)
-                    
+
                     if (versionMatch != null) {
                         val latestVersion = versionMatch.groupValues[1].toInt()
                         val updateContent = contentMatch?.groupValues?.get(1) ?: ""
-                        
+
                         if (latestVersion > CURRENT_VERSION) {
                             // 主线程显示更新对话框
                             runOnUiThread {
@@ -228,6 +233,79 @@ class MainActivity : ComponentActivity() {
         }.start()
     }
 
+    // 在线主题目录加载（失败时回落到内置列表）
+    fun fetchThemeCatalog(onLoaded: (List<ThemeData>) -> Unit, onError: () -> Unit) {
+        Thread {
+            var result: List<ThemeData>? = null
+            try {
+                val url = URL(THEME_CATALOG_URL)
+                val connection = url.openConnection() as HttpURLConnection
+                connection.connectTimeout = 5000
+                connection.readTimeout = 8000
+                connection.requestMethod = "GET"
+
+                if (connection.responseCode == HttpURLConnection.HTTP_OK) {
+                    val reader = BufferedReader(InputStreamReader(connection.inputStream))
+                    val sb = StringBuilder()
+                    var line: String?
+                    while (reader.readLine().also { line = it } != null) {
+                        sb.append(line)
+                    }
+                    reader.close()
+
+                    val json = org.json.JSONObject(sb.toString())
+                    val arr = json.optJSONArray("themes")
+                    val list = mutableListOf<ThemeData>()
+                    if (arr != null) {
+                        for (i in 0 until arr.length()) {
+                            try {
+                                val o = arr.getJSONObject(i)
+                                val tags = mutableListOf<String>()
+                                val tArr = o.optJSONArray("tags")
+                                if (tArr != null) {
+                                    for (j in 0 until tArr.length()) {
+                                        val t = tArr.optString(j)
+                                        if (t.isNotBlank()) tags.add(t)
+                                    }
+                                }
+                                val name = o.optString("name")
+                                val link = o.optString("link")
+                                if (name.isNotBlank() && link.isNotBlank()) {
+                                    list.add(
+                                        ThemeData(
+                                            id = o.optInt("id", i + 100),
+                                            name = name,
+                                            desc = o.optString("desc"),
+                                            image = o.optString("image"),
+                                            link = link,
+                                            extractCode = o.optString("extractCode"),
+                                            tags = tags
+                                        )
+                                    )
+                                }
+                            } catch (_: Exception) {
+                                // 单条解析失败不影响整体
+                            }
+                        }
+                    }
+                    if (list.isNotEmpty()) {
+                        result = list
+                    }
+                }
+                connection.disconnect()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            runOnUiThread {
+                if (result != null) {
+                    onLoaded(result!!)
+                } else {
+                    onError()
+                }
+            }
+        }.start()
+    }
+
     // 打开更新链接
     fun openUpdateLink(context: Context) {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(DOWNLOAD_URL))
@@ -243,7 +321,7 @@ class MainActivity : ComponentActivity() {
                 connection.connectTimeout = 5000
                 connection.readTimeout = 5000
                 connection.requestMethod = "GET"
-                
+
                 val responseCode = connection.responseCode
                 if (responseCode == HttpURLConnection.HTTP_OK) {
                     val inputStream = connection.inputStream
@@ -255,20 +333,20 @@ class MainActivity : ComponentActivity() {
                     }
                     bufferedReader.close()
                     inputStream.close()
-                    
+
                     val jsonString = stringBuilder.toString()
-                    
+
                     // 简单解析JSON - 提取所需字段
                     val contentPattern = Regex("\"content\":\"([^\"]+)\"")
                     val dynastyPattern = Regex("\"dynasty\":\"([^\"]+)\"")
                     val authorPattern = Regex("\"author\":\"([^\"]+)\"")
                     val titlePattern = Regex("\"title\":\"([^\"]+)\"")
-                    
+
                     val contentMatch = contentPattern.find(jsonString)
                     val dynastyMatch = dynastyPattern.find(jsonString)
                     val authorMatch = authorPattern.find(jsonString)
                     val titleMatch = titlePattern.find(jsonString)
-                    
+
                     if (contentMatch != null && dynastyMatch != null && authorMatch != null && titleMatch != null) {
                         val poetryData = PoetryData(
                             content = contentMatch.groupValues[1],
@@ -302,7 +380,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun 凡尘主题库Theme(
+fun LiuGuangTheme(
     darkTheme: Boolean,
     content: @Composable () -> Unit
 ) {
@@ -392,7 +470,7 @@ fun SplashScreen(onSplashFinished: () -> Unit) {
     }
 
     val isDarkTheme = isSystemInDarkTheme()
-    
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -412,7 +490,7 @@ fun SplashScreen(onSplashFinished: () -> Unit) {
             )
             Spacer(modifier = Modifier.height(24.dp))
             Text(
-                text = "凡尘主题库",
+                text = "流光主题",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 color = if (isDarkTheme) Color.White else MaterialTheme.colorScheme.primary
@@ -429,7 +507,7 @@ fun SplashScreen(onSplashFinished: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun 凡尘主题库App(
+fun LiuGuangApp(
     isDarkTheme: Boolean,
     useSystemTheme: Boolean,
     onThemeChange: (Boolean) -> Unit,
@@ -447,7 +525,7 @@ fun 凡尘主题库App(
     if (showSplash) {
         SplashScreen(onSplashFinished = { showSplash = false })
     } else {
-        // 进入app3秒后检查更新
+        // 进入app0.5秒后检查更新
         LaunchedEffect(Unit) {
             kotlinx.coroutines.delay(MainActivity.UPDATE_CHECK_DELAY)
             mainActivity.checkForUpdates(
@@ -457,9 +535,7 @@ fun 凡尘主题库App(
                     updateContent = content
                     showUpdateDialog = true
                 },
-                onLatestVersion = {
-                    Toast.makeText(context, "已是最新版本", Toast.LENGTH_SHORT).show()
-                }
+                onLatestVersion = {}
             )
         }
 
@@ -528,9 +604,9 @@ fun BottomNavigationBar(navController: NavHostController) {
         NavigationItem("import", "导入", Icons.Default.FileUpload),
         NavigationItem("about", "关于", Icons.Default.Info)
     )
-    
+
     val glassTabs = items.map { GlassTabItem(it.icon, it.label) }
-    
+
     GlassBottomNavigationBar(
         selectedTabIndex = items.indexOfFirst { it.route == selectedItem },
         onTabSelected = { index ->
@@ -585,27 +661,29 @@ fun NavigationGraph(
     }
 }
 
+// ============ 主题页（大改版：筛选 + 大图卡片网格 + 精品横幅 + 在线目录） ============
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen() {
     val context = LocalContext.current
     val mainActivity = context as MainActivity
-    val themes = remember { getThemes() }
-    val scrollState = rememberScrollState()
+
+    var themes by remember { mutableStateOf(getThemes()) }
+    var catalogCount by remember { mutableStateOf(0) }
+    var filter by rememberSaveable { mutableStateOf("全部") }
 
     var showDialog by remember { mutableStateOf(false) }
     var currentExtractCode by remember { mutableStateOf("") }
     var currentLink by remember { mutableStateOf("") }
-    
+
     var poetryData by remember { mutableStateOf<PoetryData?>(null) }
-    
-    // 获取今日诗词
+
+    // 今日诗词
     LaunchedEffect(Unit) {
         mainActivity.getTodayPoetry(
-            onPoetryLoaded = { data ->
-                poetryData = data
-            },
+            onPoetryLoaded = { data -> poetryData = data },
             onError = {
-                // 加载失败时使用默认诗词
                 poetryData = PoetryData(
                     content = "重唱梅边新度曲，催发寒梢冻蕊",
                     dynasty = "宋",
@@ -616,98 +694,97 @@ fun HomeScreen() {
         )
     }
 
+    // 在线主题目录（失败自动使用内置列表）
+    LaunchedEffect(Unit) {
+        mainActivity.fetchThemeCatalog(
+            onLoaded = { remote ->
+                themes = remote
+                catalogCount = remote.size
+            },
+            onError = {
+                catalogCount = 0
+            }
+        )
+    }
+
+    val filters = listOf("全部", "华为", "荣耀", "仿苹果风")
+    val filtered = if (filter == "全部") {
+        themes
+    } else {
+        themes.filter { t -> t.tags.any { it.contains(filter) } }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(scrollState)
         ) {
-            Spacer(modifier = Modifier.height(100.dp))
+            Spacer(modifier = Modifier.height(104.dp))
 
-            Card(
+            // 筛选行
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp)
-                    .clickable {
-                        handleThemeClick(
-                            context = context,
-                            link = "https://www.123912.com/s/FtDojv-D6DFv?pwd=HM66#",
-                            extractCode = "HM66"
-                        ) { code, link ->
-                            currentExtractCode = code
-                            currentLink = link
-                            showDialog = true
-                        }
-                    },
-                shape = RoundedCornerShape(20.dp)
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Column {
-                    Image(
-                        painter = rememberAsyncImagePainter("file:///android_asset/hm6.jpg"),
-                        contentDescription = "仿鸿蒙6",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp),
-                        contentScale = ContentScale.Crop
-                    )
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "仿鸿蒙6",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "点击图片跳转（提取码自动复制）",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .clickable {
-                        val intent = Intent(Intent.ACTION_VIEW,
-                            Uri.parse("https://www.123865.com/s/4SljVv-H3yUh"))
-                        context.startActivity(intent)
-                    },
-                shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 12.dp, bottomEnd = 12.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFC6A9FF))
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 16.dp, horizontal = 20.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "第三方主题",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    Icon(
-                        painter = painterResource(id = android.R.drawable.ic_menu_share),
-                        contentDescription = "跳转",
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp)
+                filters.forEach { f ->
+                    FilterChip(
+                        selected = filter == f,
+                        onClick = { filter = f },
+                        label = { Text(f, fontSize = 13.sp) }
                     )
                 }
             }
 
+            Text(
+                text = if (catalogCount > 0) {
+                    "共 ${filtered.size} 款 · 在线主题库已同步"
+                } else {
+                    "共 ${filtered.size} 款 · 内置主题库（联网同步更多）"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 20.dp, top = 6.dp, bottom = 8.dp)
+            )
+
+            // 主题网格（网格自身滚动：列表长时不再受限）
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .heightIn(max = 2000.dp),
-                contentPadding = PaddingValues(bottom = 120.dp)
+                    .padding(horizontal = 12.dp),
+                contentPadding = PaddingValues(bottom = 140.dp, top = 2.dp)
             ) {
-                items(themes) { theme ->
+                // 精品推荐横幅（跨双列）
+                item(span = { GridItemSpan(2) }) {
+                    HeroBanner(
+                        onClick = {
+                            handleThemeClick(
+                                context = context,
+                                link = "https://www.123912.com/s/FtDojv-D6DFv?pwd=HM66#",
+                                extractCode = "HM66"
+                            ) { code, link ->
+                                currentExtractCode = code
+                                currentLink = link
+                                showDialog = true
+                            }
+                        }
+                    )
+                }
+
+                // 第三方海量主题合集入口（跨双列）
+                item(span = { GridItemSpan(2) }) {
+                    BulkCard(
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW,
+                                Uri.parse("https://www.123865.com/s/4SljVv-H3yUh"))
+                            context.startActivity(intent)
+                        }
+                    )
+                }
+
+                items(filtered) { theme ->
                     ThemeCard(
                         theme = theme,
                         onClick = {
@@ -727,7 +804,7 @@ fun HomeScreen() {
         }
 
         GlassTopBar(
-            title = "凡尘主题库",
+            title = "流光主题",
             subtitle = poetryData?.content ?: "重唱梅边新度曲，催发寒梢冻蕊",
             leadingIcon = {
                 Image(
@@ -744,16 +821,20 @@ fun HomeScreen() {
     if (showDialog) {
         AlertDialog(
             onDismissRequest = { showDialog = false },
-            title = { Text("提取码已复制", fontWeight = FontWeight.Bold) },
+            title = { Text("即将跳转", fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    Text(
-                        text = "提取码：$currentExtractCode",
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(bottom = 8.dp),
-                        fontSize = 18.sp
-                    )
-                    Text("提取码已复制到剪贴板，部分网盘可能会复制一些文字，请在键盘的剪贴板中查看")
+                    if (currentExtractCode.isNotBlank()) {
+                        Text(
+                            text = "提取码：$currentExtractCode",
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(bottom = 8.dp),
+                            fontSize = 18.sp
+                        )
+                        Text("提取码已复制到剪贴板，部分网盘可能会复制一些文字，请在键盘的剪贴板中查看")
+                    } else {
+                        Text("即将打开官方网盘页面，请在选择文件时下载 .hwt / .hnt 主题包")
+                    }
                 }
             },
             confirmButton = {
@@ -782,27 +863,157 @@ fun HomeScreen() {
     }
 }
 
+// 精品推荐横幅（双列）
+@Composable
+fun HeroBanner(onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 8.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(24.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(210.dp)
+        ) {
+            Image(
+                painter = rememberAsyncImagePainter("file:///android_asset/hm6.jpg"),
+                contentDescription = "仿鸿蒙6",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            0.45f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = 0.72f)
+                        )
+                    )
+            )
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(20.dp, 16.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "精品 · 仿鸿蒙6",
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Color(0xFF41A6FF).copy(alpha = 0.85f))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = "推荐",
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+                Text(
+                    text = "点击卡片 → 提取码自动复制 → 跳转下载",
+                    color = Color.White.copy(alpha = 0.85f),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+        }
+    }
+}
+
+// 第三方海量合集入口（双列窄条）
+@Composable
+fun BulkCard(onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 4.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFC6A9FF))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp, horizontal = 20.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "第三方海量主题合集",
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                text = "长期更新 →",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.9f)
+            )
+        }
+    }
+}
+
+// 主题卡片（大图 + 底部渐变叠字 + 标签）
 @Composable
 fun ThemeCard(theme: ThemeData, onClick: () -> Unit) {
     Card(
         modifier = Modifier
-            .padding(10.dp)
+            .padding(6.dp)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
     ) {
-        Column {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.62f)
+        ) {
             Image(
-                painter = rememberAsyncImagePainter("file:///android_asset/${theme.imageName}"),
+                painter = rememberAsyncImagePainter(
+                    if (theme.image.startsWith("http")) theme.image
+                    else "file:///android_asset/${theme.image}"
+                ),
                 contentDescription = theme.name,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(9f / 19.5f),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
             )
-            Column(modifier = Modifier.padding(12.dp)) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            0.5f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = 0.68f)
+                        )
+                    )
+            )
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .padding(12.dp, 10.dp)
+            ) {
                 Text(
                     text = theme.name,
+                    color = Color.White,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
@@ -810,11 +1021,33 @@ fun ThemeCard(theme: ThemeData, onClick: () -> Unit) {
                 )
                 Text(
                     text = theme.desc,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Color.White.copy(alpha = 0.8f),
+                    style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp)
                 )
+                if (theme.tags.isNotEmpty()) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.padding(top = 6.dp)
+                    ) {
+                        theme.tags.take(2).forEach { tag ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .background(Color.White.copy(alpha = 0.22f))
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = tag,
+                                    color = Color.White,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -852,6 +1085,7 @@ data class PoetryData(
     val title: String
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ImportToolScreen(phoneBrand: String, onBrandChange: (String) -> Unit) {
     val context = LocalContext.current
@@ -952,377 +1186,377 @@ fun ImportToolScreen(phoneBrand: String, onBrandChange: (String) -> Unit) {
                 }
             }
 
-        Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            )
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "手机品牌选择",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(bottom = 12.dp)
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Card(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(50.dp)
-                            .clickable {
-                                onBrandChange("华为")
-                            },
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (phoneBrand == "华为")
-                                MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.surface
-                        ),
-                        border = if (phoneBrand == "华为") null else CardDefaults.outlinedCardBorder()
-                    ) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            Text(
-                                text = "华为",
-                                color = if (phoneBrand == "华为") Color.White else MaterialTheme.colorScheme.onSurface,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-
-                    Card(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(50.dp)
-                            .clickable {
-                                onBrandChange("荣耀")
-                            },
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (phoneBrand == "荣耀")
-                                MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.surface
-                        ),
-                        border = if (phoneBrand == "荣耀") null else CardDefaults.outlinedCardBorder()
-                    ) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            Text(
-                                text = "荣耀",
-                                color = if (phoneBrand == "荣耀") Color.White else MaterialTheme.colorScheme.onSurface,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-                }
-
-                Text(
-                    text = "当前品牌：$phoneBrand",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-
-                Text(
-                    text = "主题文件将复制到：/storage/emulated/0/${if (phoneBrand == "华为") "Huawei" else "Honor"}/Themes/",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        selectedFileInfo?.let { fileInfo ->
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "手机品牌选择",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Card(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(50.dp)
+                                .clickable {
+                                    onBrandChange("华为")
+                                },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (phoneBrand == "华为")
+                                    MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.surface
+                            ),
+                            border = if (phoneBrand == "华为") null else CardDefaults.outlinedCardBorder()
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                Text(
+                                    text = "华为",
+                                    color = if (phoneBrand == "华为") Color.White else MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+
+                        Card(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(50.dp)
+                                .clickable {
+                                    onBrandChange("荣耀")
+                                },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (phoneBrand == "荣耀")
+                                    MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.surface
+                            ),
+                            border = if (phoneBrand == "荣耀") null else CardDefaults.outlinedCardBorder()
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                Text(
+                                    text = "荣耀",
+                                    color = if (phoneBrand == "荣耀") Color.White else MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+
+                    Text(
+                        text = "当前品牌：$phoneBrand",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+
+                    Text(
+                        text = "主题文件将复制到：/storage/emulated/0/${if (phoneBrand == "华为") "Huawei" else "Honor"}/Themes/",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            selectedFileInfo?.let { fileInfo ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.hwthnt),
+                                contentDescription = "文件",
+                                tint = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = "已选择的文件",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.secondary
+                            )
+                        }
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FileInfoRow(
+                                label = "文件名：",
+                                value = fileInfo.name,
+                                maxLines = 1
+                            )
+                            FileInfoRow(
+                                label = "文件大小：",
+                                value = fileInfo.getFormattedSize()
+                            )
+                            FileInfoRow(
+                                label = "文件路径：",
+                                value = fileInfo.path,
+                                maxLines = 3
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Button(
+                            onClick = {
+                                if (checkAndRequestPermission()) {
+                                    if (checkThemesFolder(phoneBrand)) {
+                                        isMovingFile = true
+                                        val result = moveFileToThemeDirectory(context, fileInfo.uri, fileInfo.name, phoneBrand)
+                                        isMovingFile = false
+                                        messageText = result.message
+                                        showMessage = true
+                                    }
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = Color.White
+                            ),
+                            enabled = !isMovingFile
+                        ) {
+                            if (isMovingFile) {
+                                CircularProgressIndicator(
+                                    color = Color.White,
+                                    strokeWidth = 2.dp,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("复制文件中...", fontSize = 16.sp)
+                            } else {
+                                Icon(Icons.Default.FileUpload, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("复制文件到主题目录", fontSize = 16.sp)
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(20.dp))
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text(
+                        text = "功能说明",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+
+                    FeatureItem(
+                        title = "主题文件导入",
+                        description = "支持 .hwt 和 .hnt 格式的华为/荣耀主题文件"
+                    )
+                    FeatureItem(
+                        title = "文件移动功能",
+                        description = "自动移动文件到手机主题目录"
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
                 ),
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.hwthnt),
-                            contentDescription = "文件",
-                            tint = MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = "已选择的文件",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.secondary
-                        )
-                    }
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "文件操作",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
 
-                    Column(
+                    Button(
+                        onClick = {
+                            filePickerLauncher.launch("*/*")
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                            .height(60.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        elevation = ButtonDefaults.buttonElevation(
+                            defaultElevation = 6.dp,
+                            pressedElevation = 4.dp
+                        )
                     ) {
-                        FileInfoRow(
-                            label = "文件名：",
-                            value = fileInfo.name,
-                            maxLines = 1
-                        )
-                        FileInfoRow(
-                            label = "文件大小：",
-                            value = fileInfo.getFormattedSize()
-                        )
-                        FileInfoRow(
-                            label = "文件路径：",
-                            value = fileInfo.path,
-                            maxLines = 3
-                        )
+                        Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(28.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("选择主题文件 (.hwt/.hnt)", fontSize = 18.sp)
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Button(
                         onClick = {
-                            if (checkAndRequestPermission()) {
-                                if (checkThemesFolder(phoneBrand)) {
-                                    isMovingFile = true
-                                    val result = moveFileToThemeDirectory(context, fileInfo.uri, fileInfo.name, phoneBrand)
-                                    isMovingFile = false
-                                    messageText = result.message
-                                    showMessage = true
-                                }
-                            }
+                            val intent = Intent(Intent.ACTION_VIEW,
+                                Uri.parse("https://www.123865.com/s/4SljVv-H3yUh"))
+                            context.startActivity(intent)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(60.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    ) {
+                        Text("下载更多主题", fontSize = 18.sp)
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    OutlinedButton(
+                        onClick = {
+                            selectedFileInfo = null
+                            messageText = "已清除选择的文件"
+                            showMessage = true
                         },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(50.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = Color.White
-                        ),
-                        enabled = !isMovingFile
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        if (isMovingFile) {
-                            CircularProgressIndicator(
-                                color = Color.White,
-                                strokeWidth = 2.dp,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("复制文件中...", fontSize = 16.sp)
-                        } else {
-                            Icon(Icons.Default.FileUpload, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("复制文件到主题目录", fontSize = 16.sp)
-                        }
+                        Text("清除选择", fontSize = 16.sp)
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(20.dp))
-        }
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-        ) {
-            Column(modifier = Modifier.padding(20.dp)) {
-                Text(
-                    text = "功能说明",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
+            Spacer(modifier = Modifier.height(28.dp))
 
-                FeatureItem(
-                    title = "主题文件导入",
-                    description = "支持 .hwt 和 .hnt 格式的华为/荣耀主题文件"
-                )
-                FeatureItem(
-                    title = "文件移动功能",
-                    description = "自动移动文件到手机主题目录"
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(28.dp))
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
-                Text(
-                    text = "文件操作",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-
-                Button(
-                    onClick = {
-                        filePickerLauncher.launch("*/*")
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(60.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    elevation = ButtonDefaults.buttonElevation(
-                        defaultElevation = 6.dp,
-                        pressedElevation = 4.dp
-                    )
-                ) {
-                    Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(28.dp))
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text("选择主题文件 (.hwt/.hnt)", fontSize = 18.sp)
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Button(
-                    onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW,
-                            Uri.parse("https://www.123865.com/s/4SljVv-H3yUh"))
-                        context.startActivity(intent)
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(60.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                ) {
-                    Text("下载更多主题", fontSize = 18.sp)
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                OutlinedButton(
-                    onClick = {
-                        selectedFileInfo = null
-                        messageText = "已清除选择的文件"
-                        showMessage = true
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("清除选择", fontSize = 16.sp)
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(28.dp))
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .padding(20.dp)
-                    .heightIn(min = 200.dp, max = 400.dp)
-            ) {
-                Text(
-                    text = "使用说明",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                        .padding(20.dp)
+                        .heightIn(min = 200.dp, max = 400.dp)
                 ) {
-                    StepItem(
-                        number = 1,
-                        title = "选择手机品牌",
-                        description = "在本页选择您的手机品牌（华为/荣耀）"
-                    )
-                    StepItem(
-                        number = 2,
-                        title = "下载主题文件",
-                        description = "从主题页下载.hwt或.hnt格式的主题文件"
-                    )
-                    StepItem(
-                        number = 3,
-                        title = "选择文件",
-                        description = "点击'选择主题文件'按钮，选择下载的文件"
-                    )
-                    StepItem(
-                        number = 4,
-                        title = "移动文件",
-                        description = "点击'复制文件到主题目录'按钮，文件将自动移动到正确目录"
-                    )
-                    StepItem(
-                        number = 5,
-                        title = "导入主题",
-                        description = "手动打开华为/荣耀主题应用，在主题应用中导入文件"
-                    )
                     Text(
-                        text = "提示：文件会自动复制到 /storage/emulated/0/[品牌]/Themes/ 目录",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(top = 8.dp)
+                        text = "使用说明",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 16.dp)
                     )
-                    Text(
-                        text = "注意：如果手机中没有Themes文件夹，那说明您可能不是 华为/荣耀 手机",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFFE57373),
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-                    Text(
-                        text = "权限说明：首次使用需要授予存储权限",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        StepItem(
+                            number = 1,
+                            title = "选择手机品牌",
+                            description = "在本页选择您的手机品牌（华为/荣耀）"
+                        )
+                        StepItem(
+                            number = 2,
+                            title = "下载主题文件",
+                            description = "从主题页下载.hwt或.hnt格式的主题文件"
+                        )
+                        StepItem(
+                            number = 3,
+                            title = "选择文件",
+                            description = "点击'选择主题文件'按钮，选择下载的文件"
+                        )
+                        StepItem(
+                            number = 4,
+                            title = "移动文件",
+                            description = "点击'复制文件到主题目录'按钮，文件将自动移动到正确目录"
+                        )
+                        StepItem(
+                            number = 5,
+                            title = "导入主题",
+                            description = "手动打开华为/荣耀主题应用，在主题应用中导入文件"
+                        )
+                        Text(
+                            text = "提示：文件会自动复制到 /storage/emulated/0/[品牌]/Themes/ 目录",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                        Text(
+                            text = "注意：如果手机中没有Themes文件夹，那说明您可能不是 华为/荣耀 手机",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFFE57373),
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                        Text(
+                            text = "权限说明：首次使用需要授予存储权限",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
                 }
             }
+
+            Spacer(modifier = Modifier.height(40.dp))
         }
 
-        Spacer(modifier = Modifier.height(40.dp))
+        GlassTopBar(
+            title = "导入工具"
+        )
     }
-    
-    GlassTopBar(
-        title = "导入工具"
-    )
-}
 
     if (showMessage) {
         AlertDialog(
@@ -1384,7 +1618,6 @@ fun ImportToolScreen(phoneBrand: String, onBrandChange: (String) -> Unit) {
                             showMessage = true
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.secondaryContainer,
                             contentColor = MaterialTheme.colorScheme.onSecondaryContainer
@@ -1440,7 +1673,6 @@ fun ImportToolScreen(phoneBrand: String, onBrandChange: (String) -> Unit) {
                         activity?.requestStoragePermission()
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary,
                         contentColor = Color.White
@@ -1692,6 +1924,9 @@ private fun moveFileToThemeDirectory(
     }
 }
 
+// ============ 关于页 ============
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AboutScreen(
     navController: NavHostController,
@@ -1702,7 +1937,6 @@ fun AboutScreen(
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
-    val systemDarkTheme = isSystemInDarkTheme()
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -1723,11 +1957,17 @@ fun AboutScreen(
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "凡尘主题库",
+                text = "流光主题",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
-            Spacer(modifier = Modifier.height(36.dp))
+            Text(
+                text = "开源 · 免费 · 在线主题库",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            Spacer(modifier = Modifier.height(30.dp))
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -1737,7 +1977,29 @@ fun AboutScreen(
                 )
             ) {
                 Column {
-                    AboutItem(label = "当前版本", value = "Stable4.1")
+                    AboutItem(label = "当前版本", value = MainActivity.APP_VERSION)
+                    Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                    AboutItem(
+                        label = "开源项目 (GPL-3.0)",
+                        value = "FanChen-Theme-Library",
+                        isClickable = true,
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW,
+                                Uri.parse("https://github.com/MI-KUNs/FanChen-Theme-Library"))
+                            context.startActivity(intent)
+                        }
+                    )
+                    Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                    AboutItem(
+                        label = "维护者源码",
+                        value = "1yk8u/liuguang-theme",
+                        isClickable = true,
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW,
+                                Uri.parse("https://github.com/1yk8u/liuguang-theme"))
+                            context.startActivity(intent)
+                        }
+                    )
                     Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                     AboutItem(
                         label = "跟随系统",
@@ -1759,7 +2021,8 @@ fun AboutScreen(
                         label = "意见反馈",
                         isClickable = true,
                         onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://pd.qq.com/s/1g1xblhyi?b=9"))
+                            val intent = Intent(Intent.ACTION_VIEW,
+                                Uri.parse("https://github.com/1yk8u/liuguang-theme/issues"))
                             context.startActivity(intent)
                         }
                     )
@@ -1770,25 +2033,39 @@ fun AboutScreen(
                         onClick = { navController.navigate("team") }
                     )
                     Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                    AboutItem(label = "官方群聊", value = "905445554")
+                    AboutItem(
+                        label = "开源应用下载页",
+                        value = "1yk8u.github.io",
+                        isClickable = true,
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(MainActivity.DOWNLOAD_URL))
+                            context.startActivity(intent)
+                        }
+                    )
                 }
             }
-            Spacer(modifier = Modifier.height(40.dp))
+            Spacer(modifier = Modifier.height(36.dp))
 
-            Image(
-                painter = rememberAsyncImagePainter("file:///android_asset/MIKUN-LOGO/mikungzs.png"),
-                contentDescription = "品牌 Logo",
-                modifier = Modifier.size(140.dp, 48.dp)
-            )
-            Spacer(modifier = Modifier.height(10.dp))
             Text(
-                text = "Copyright © MIKUN All Rights Reserved",
+                text = "基于 GPL-3.0 开源项目 FanChen-Theme-Library 重制",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Spacer(modifier = Modifier.height(100.dp))
+            Text(
+                text = "原项目作者：MIKUN（保留原项目署名与许可）",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            Text(
+                text = "Copyright © 流光主题 2026",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 10.dp)
+            )
+            Spacer(modifier = Modifier.height(90.dp))
         }
-        
+
         GlassTopBar(
             title = "关于"
         )
@@ -1818,9 +2095,9 @@ fun AboutItem(
             text = label,
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.Medium,
-            color = if (isEnabled) 
-                MaterialTheme.colorScheme.onSurfaceVariant 
-            else 
+            color = if (isEnabled)
+                MaterialTheme.colorScheme.onSurfaceVariant
+            else
                 MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
         )
         Box(
@@ -1835,7 +2112,7 @@ fun AboutItem(
             } else if (value != null) {
                 Text(
                     text = value,
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -1851,96 +2128,110 @@ fun AboutItem(
     }
 }
 
+// ============ 主题数据 ============
+
 data class ThemeData(
     val id: Int,
     val name: String,
     val desc: String,
-    val imageName: String,
+    val image: String,
     val link: String,
-    val extractCode: String
+    val extractCode: String,
+    val tags: List<String> = emptyList()
 )
 
+// 内置列表（离线兜底）——来源于 GPL-3.0 上游项目源码自带内容
 fun getThemes(): List<ThemeData> {
     return listOf(
         ThemeData(
             id = 1,
             name = "拟态白昼",
-            desc = "提取码自动复制",
-            imageName = "ntbz.jpg",
+            desc = "清新拟态风",
+            image = "ntbz.jpg",
             link = "https://sss00001.lanzoui.com/b007t4sx3g",
-            extractCode = "YJDD"
+            extractCode = "YJDD",
+            tags = listOf("华为", "荣耀")
         ),
         ThemeData(
             id = 2,
             name = "寰宇NEXT 3.0主题",
             desc = "提取码自动复制",
-            imageName = "hm.png",
+            image = "hm.png",
             link = "https://www.123912.com/s/FtDojv-WzGFv?",
-            extractCode = "1rWT"
+            extractCode = "1rWT",
+            tags = listOf("华为", "荣耀")
         ),
         ThemeData(
             id = 3,
             name = "月球一镜到底主题",
             desc = "提取码自动复制",
-            imageName = "yq.jpg",
+            image = "yq.jpg",
             link = "https://sss00001.lanzoui.com/b007t4sx3g",
-            extractCode = "YJDD"
+            extractCode = "YJDD",
+            tags = listOf("华为", "荣耀")
         ),
         ThemeData(
             id = 4,
             name = "鸿果26 Pro",
             desc = "提取码自动复制",
-            imageName = "ios26.jpg",
+            image = "ios26.jpg",
             link = "https://sss00001.lanzoui.com/b007tsec1i",
-            extractCode = "HG26"
+            extractCode = "HG26",
+            tags = listOf("华为", "荣耀", "仿苹果风")
         ),
         ThemeData(
             id = 5,
             name = "警鸿-凡尘版V3主题",
             desc = "提取码自动复制",
-            imageName = "jingwu.jpg",
+            image = "jingwu.jpg",
             link = "https://www.123865.com/s/FtDojv-s7MFv?",
-            extractCode = "8E0N"
+            extractCode = "8E0N",
+            tags = listOf("华为", "荣耀")
         ),
         ThemeData(
             id = 6,
             name = "土星一镜到底主题",
             desc = "提取码自动复制",
-            imageName = "tuxing.jpg",
+            image = "tuxing.jpg",
             link = "https://sss00001.lanzoui.com/b007t4sx3g",
-            extractCode = "YJDD"
+            extractCode = "YJDD",
+            tags = listOf("华为", "荣耀")
         ),
         ThemeData(
             id = 7,
             name = "火星一镜到底主题",
             desc = "提取码自动复制",
-            imageName = "huoxing.jpg",
+            image = "huoxing.jpg",
             link = "https://sss00001.lanzoui.com/b007t4sx3g",
-            extractCode = "YJDD"
+            extractCode = "YJDD",
+            tags = listOf("华为", "荣耀")
         ),
         ThemeData(
             id = 8,
             name = "少女OS",
             desc = "提取码自动复制",
-            imageName = "shonu26.jpg",
+            image = "shonu26.jpg",
             link = "https://www.123865.com/s/FtDojv-8sMFv?",
-            extractCode = "Ovv2"
+            extractCode = "Ovv2",
+            tags = listOf("华为", "荣耀", "仿苹果风")
         ),
         ThemeData(
             id = 9,
             name = "华果主题",
             desc = "by 曾相见cxj",
-            imageName = "HPOS.jpg",
+            image = "HPOS.jpg",
             link = "https://wwr.lanzoui.com/b00rnx9uxc",
-            extractCode = "4cy4"
+            extractCode = "4cy4",
+            tags = listOf("华为", "荣耀", "仿苹果风")
         ),
         ThemeData(
             id = 10,
             name = "鸿果 18 Pro主题",
             desc = "提取码自动复制",
-            imageName = "hg18.png",
+            image = "hg18.png",
             link = "https://sss00001.lanzoui.com/b007t3tu8d",
-            extractCode = "HG18"
+            extractCode = "HG18",
+            tags = listOf("华为", "荣耀", "仿苹果风")
         )
     )
 }
@@ -1951,8 +2242,10 @@ fun handleThemeClick(
     extractCode: String,
     onShowDialog: (String, String) -> Unit
 ) {
-    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    val clip = ClipData.newPlainText("提取码", extractCode)
-    clipboard.setPrimaryClip(clip)
+    if (extractCode.isNotBlank()) {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText("提取码", extractCode)
+        clipboard.setPrimaryClip(clip)
+    }
     onShowDialog(extractCode, link)
 }

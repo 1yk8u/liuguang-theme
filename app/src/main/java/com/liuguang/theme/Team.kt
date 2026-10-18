@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -58,22 +59,33 @@ fun TeamScreen(navController: NavHostController) {
             ) {
                 Spacer(modifier = Modifier.height(20.dp))
                 Text(
-                    text = "我们的团队",
+                    text = "开发组",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "追逐梦想",
+                    text = "开源 · 免费 · 流光主题",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(30.dp))
 
                 TeamMemberCard(
+                    name = "流光",
+                    position = "维护者 · 开源重制",
+                    description = "负责流光主题维护、界面升级与在线主题库整合",
+                    painter = painterResource(id = R.drawable.icon),
+                    onClick = {
+                        openLink(context, "https://github.com/1yk8u/liuguang-theme")
+                    }
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                TeamMemberCard(
                     name = "MIKUN",
-                    position = "创始人 & 开发者",
-                    description = "负责整体开发和维护凡尘主题库",
-                    avatar = "file:///android_asset/mikun.jpg",
+                    position = "原作者 · GPL 项目作者",
+                    description = "GPL-3.0 上游项目 FanChen-Theme-Library 作者，感谢开源精神",
+                    painter = rememberAsyncImagePainter("file:///android_asset/mikun.jpg"),
                     onClick = {
                         openLink(context, "https://mikunweb.netlify.app/")
                     }
@@ -82,9 +94,9 @@ fun TeamScreen(navController: NavHostController) {
 
                 TeamMemberCard(
                     name = "凡尘",
-                    position = "主题设计师",
-                    description = "负责主题设计",
-                    avatar = "file:///android_asset/fc.jpg",
+                    position = "原项目设计师",
+                    description = "原项目主题设计",
+                    painter = rememberAsyncImagePainter("file:///android_asset/fc.jpg"),
                     onClick = {
                         openLink(context, "https://link3.cc/fc_ndw")
                     }
@@ -93,7 +105,7 @@ fun TeamScreen(navController: NavHostController) {
                 Spacer(modifier = Modifier.height(30.dp))
             }
         }
-        
+
         GlassTopBar(
             title = "开发组",
             leadingIcon = {
@@ -114,7 +126,7 @@ fun TeamMemberCard(
     name: String,
     position: String,
     description: String,
-    avatar: String,
+    painter: Painter,
     onClick: () -> Unit
 ) {
     Card(
@@ -131,7 +143,7 @@ fun TeamMemberCard(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Image(
-                painter = rememberAsyncImagePainter(avatar),
+                painter = painter,
                 contentDescription = name,
                 modifier = Modifier
                     .size(100.dp)
@@ -147,7 +159,7 @@ fun TeamMemberCard(
             Text(
                 text = position,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary,
+                color = Color(0xFF41A6FF),
                 fontWeight = FontWeight.Medium
             )
             Spacer(modifier = Modifier.height(8.dp))
