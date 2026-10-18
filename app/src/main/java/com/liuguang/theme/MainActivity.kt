@@ -1,4 +1,4 @@
-package mikun.fcztk.theme
+package com.liuguang.theme
 
 import android.Manifest
 import android.os.Build
@@ -40,7 +40,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import mikun.fcztk.theme.TeamScreen
+import com.liuguang.theme.TeamScreen
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -68,10 +68,10 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val REQUEST_CODE_STORAGE_PERMISSION = 1001
         private const val REQUEST_CODE_MANAGE_STORAGE = 1002
-        const val CURRENT_VERSION = 41 // 当前应用版本号
+        const val CURRENT_VERSION = 50 // 当前应用版本号
         const val UPDATE_CHECK_DELAY = 500L // 进入app后0.5秒检查更新
-        const val UPDATE_URL = "https://fcztk.netlify.app/gx"
-        const val DOWNLOAD_URL = "https://fcztk.netlify.app/d"
+        const val UPDATE_URL = "https://1yk8u.github.io/app1/up/gx.txt"
+        const val DOWNLOAD_URL = "https://1yk8u.github.io/app1/"
         const val POETRY_URL = "https://v2.jinrishici.com/one.json"
     }
 

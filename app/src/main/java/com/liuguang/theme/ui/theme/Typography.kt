@@ -1,5 +1,3 @@
-package mikun.fcztk.theme.ui.theme
-
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -8,9 +6,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Color(0xFFA0C4F6),
+    primary = Color(0xFFBB86FC),
     secondary = Color(0xFF03DAC5),
-    tertiary = Color(0xFF6DB9F8),
+    tertiary = Color(0xFF4FCBFF),
     background = Color(0xFF121212),
     surface = Color(0xFF121212),
     onPrimary = Color.Black,
@@ -20,9 +18,9 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = Color(0xFF6CA9FF),
+    primary = Color(0xFF5269FF),
     secondary = Color(0xFF03DAC5),
-    tertiary = Color(0xFF3D5BFA),
+    tertiary = Color(0xFF5AB4FA),
     background = Color(0xFFFFFFFF),
     surface = Color(0xFFFFFFFF),
     onPrimary = Color.White,
@@ -44,7 +42,6 @@ fun 凡尘主题库Theme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
         content = content
     )
 }

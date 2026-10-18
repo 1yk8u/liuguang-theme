@@ -4,17 +4,17 @@ plugins {
 }
 
 android {
-    namespace = "mikun.fcztk.theme"
+    namespace = "com.liuguang.theme"
     compileSdk {
         version = release(36)
     }
 
     defaultConfig {
-        applicationId = "mikun.fcztk.theme"
+        applicationId = "com.liuguang.theme"
         minSdk = 24
         targetSdk = 36
-        versionCode = 41
-        versionName = "Stable4.1"
+        versionCode = 50
+        versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true

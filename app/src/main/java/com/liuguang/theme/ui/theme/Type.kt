@@ -1,4 +1,4 @@
-package mikun.fcztk.theme.ui.theme
+package com.liuguang.theme.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
