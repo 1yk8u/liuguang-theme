@@ -13,8 +13,8 @@ android {
         applicationId = "com.liuguang.theme"
         minSdk = 24
         targetSdk = 36
-        versionCode = 51
-        versionName = "1.1.0"
+        versionCode = 52
+        versionName = "1.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true

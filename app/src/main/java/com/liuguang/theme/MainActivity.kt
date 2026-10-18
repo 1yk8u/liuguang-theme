@@ -490,7 +490,7 @@ fun SplashScreen(onSplashFinished: () -> Unit) {
             )
             Spacer(modifier = Modifier.height(24.dp))
             Text(
-                text = "流光主题",
+                text = "主题Pro",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 color = if (isDarkTheme) Color.White else MaterialTheme.colorScheme.primary
@@ -804,7 +804,7 @@ fun HomeScreen() {
         }
 
         GlassTopBar(
-            title = "流光主题",
+            title = "主题Pro",
             subtitle = poetryData?.content ?: "重唱梅边新度曲，催发寒梢冻蕊",
             leadingIcon = {
                 Image(
@@ -1957,7 +1957,7 @@ fun AboutScreen(
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "流光主题",
+                text = "主题Pro",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
@@ -2058,7 +2058,7 @@ fun AboutScreen(
                 modifier = Modifier.padding(top = 4.dp)
             )
             Text(
-                text = "Copyright © 流光主题 2026",
+                text = "Copyright © 主题Pro 2026",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 10.dp)

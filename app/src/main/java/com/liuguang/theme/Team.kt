@@ -64,7 +64,7 @@ fun TeamScreen(navController: NavHostController) {
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "开源 · 免费 · 流光主题",
+                    text = "开源 · 免费 · 主题Pro",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -73,7 +73,7 @@ fun TeamScreen(navController: NavHostController) {
                 TeamMemberCard(
                     name = "流光",
                     position = "维护者 · 开源重制",
-                    description = "负责流光主题维护、界面升级与在线主题库整合",
+                    description = "负责主题Pro维护、界面升级与在线主题库整合",
                     painter = painterResource(id = R.drawable.icon),
                     onClick = {
                         openLink(context, "https://github.com/1yk8u/liuguang-theme")
