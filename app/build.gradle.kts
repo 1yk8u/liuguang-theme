@@ -13,8 +13,8 @@ android {
         applicationId = "com.liuguang.theme"
         minSdk = 24
         targetSdk = 36
-        versionCode = 52
-        versionName = "1.2.0"
+        versionCode = 53
+        versionName = "2.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
@@ -36,6 +36,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     packaging {
         resources {
@@ -58,6 +59,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material3.adaptive.navigation.suite)
     implementation(libs.androidx.navigation.compose)
+    /* 小米通道图标(扩展图标集) */ implementation("androidx.compose.material:material-icons-extended:1.6.8")
     implementation(libs.coil.compose)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
